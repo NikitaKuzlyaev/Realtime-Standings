@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Таблица соревнования</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 0px;
+            table-layout: fixed;
+            font-size: 2vw; /* Используем vw для шрифта, чтобы он был адаптивным */
+        }
+
+        th, td {
+            border: 2px solid #999;
+            padding: 12px 8px; /* Увеличили отступы для высоты */
+            text-align: center;
+            overflow: hidden;
+            text-overflow: clip;
+            white-space: nowrap; /* Запрещаем перенос текста */
+            font-size: 80%; /* Делаем шрифт побольше для строк */
+        }
+
+        th {
+            background: #eee;  /* Сделаем фон белым для заголовков */
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        td.rejected {
+            background-color: #f99;
+        }
+
+        td.ok {
+            background-color: #9f9;
+        }
+
+        td.name {
+            font-weight: bold;
+            font-size: 2vw; /* Адаптивный шрифт для имени команды */
+            text-align: left;
+            padding-left: 12px;
+        }
+
+        /* Жёстко задаём ширины первых колонок */
+        th:nth-child(1),
+        td:nth-child(1) {
+            width: 2%;
+        }
+
+        th:nth-child(2),
+        td:nth-child(2) {
+            width: 7%;
+        }
+
+        th:nth-child(3),
+        td:nth-child(3) {
+            width: 45%;
+        }
+
+        th:nth-child(4),
+        td:nth-child(4) {
+            width: 5%;
+        }
+
+        th:nth-child(5),
+        td:nth-child(5) {
+            width: 5%;
+        }
+
+
+        #header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background-color: #fff;
+            z-index: 10;
+            height: 1uw; /* Высота хедера 1.5 высоты ячейки */
+            border-bottom: 2px solid #999;
+            padding: 0 20px;
+        }
+
+        #competition-info {
+            font-size: 18px;
+        }
+
+        #hide-names-checkbox {
+            margin-left: 15px;
+        }
+
+        #time-left {
+            font-size: 16px;
+        }
+
+        #standings-container {
+            overflow-y: auto;
+            max-height: 90vh; /* Контейнер будет занимать 80% от высоты экрана */
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+
+    </style>
+</head>
+<body>
+<div id="header">
+    <div id="competition-info">
+        <h1 id="competition-title" style="font-size: 1vw; margin: 0;">Загрузка...</h1>
+    </div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <label>
+            <input type="checkbox" id="auto-scroll-checkbox"> Автопрокрутка
+        </label>
+        <label>
+            Скорость:
+            <select id="scroll-speed-select">
+                <option value="slow">Медленно</option>
+                <option value="medium" selected>Средне</option>
+                <option value="fast">Быстро</option>
+            </select>
+        </label>
+        <label>
+            <input type="checkbox" id="hide-names-checkbox"> Скрыть фамилии
+        </label>
+    </div>
+</div>
+
+
+<div id="standings-container"></div>
+
+<script>
+
+    const container = document.getElementById("standings-container");
+    const hideNamesCheckbox = document.getElementById("hide-names-checkbox");
+    const competitionInfo = document.getElementById("competition-info");
+    const timeLeftSpan = document.getElementById("time-left");
+
+    // Храним состояние, скрыты ли фамилии участников
+    let areNamesHidden = localStorage.getItem("hideNames") === "true";
+
+    // Устанавливаем начальное состояние чекбокса
+    hideNamesCheckbox.checked = areNamesHidden;
+
+    // Функция пинга для проверки активности
+    async function pingAlive() {
+        try {
+            await fetch("/core/client_still_alive");
+        } catch (err) {
+            console.warn("Не удалось отправить пинг /core/client_still_alive:", err);
+        }
+    }
+
+    // Форматируем результат для задач
+    function formatSubmission(result) {
+        if (result.points === 0) {
+            return result.rejectedAttemptCount > 0
+                ? `<td class="rejected"></td>`
+                : `<td></td>`;
+        }
+        return `<td class="ok"></td>`;
+    }
+
+
+
+    // Получаем данные с сервера
+    async function fetchStandings() {
+        try {
+
+            const res = await fetch("/core/get_contest_standings");
+            const data = await res.json();
+            const competitionTitle = document.getElementById("competition-title");
+            const contestName = data.result.contest.name;
+             competitionTitle.textContent = contestName;
+
+            const contest = data.result;
+            const problems = contest.problems;
+            const rows = contest.rows;
+
+
+            let html = `<table><thead><tr>
+                <th>#</th>
+                <th>Tag</th>
+                <th>Team</th>
+                <th>Solved</th>
+                <th>Penalty</th>`;
+
+            // Подписываем задачи одной буквой (A, B, C, ...)
+            for (let i = 0; i < problems.length; i++) {
+                html += `<th>${String.fromCharCode(65 + i)}</th>`;
+            }
+
+            html += "</tr></thead><tbody>";
+
+            for (const row of rows) {
+                const teamNameWithMembers = row.party.members[0].name;
+
+                // Разбираем строку
+                const teamNameMatch = teamNameWithMembers.match(/^([^\[]+)\s*(\[.*?\])?\s*\((.*)\)$/);
+
+                if (teamNameMatch) {
+    const teamName = teamNameMatch[1].trim();
+    const teamTag = teamNameMatch[2] || '';
+    const teamMembers = teamNameMatch[3].split(',').map(member => member.trim()).join(", ");
+
+    const formattedTeamName = areNamesHidden
+        ? `${teamName} `
+        : `${teamName}  (${teamMembers})`;
+
+    html += `<tr>
+        <td>${row.rank}</td>
+        <td>${teamTag} </td>
+        <td class="name">${formattedTeamName}</td>
+        <td>${row.points}</td>
+        <td>${row.penalty}</td>`;
+
+    for (const result of row.problemResults) {
+        html += formatSubmission(result);
+    }
+
+    html += "</tr>";
+} else {
+    // Если имя команды не соответствует ожидаемому формату, выводим просто команду
+    html += `<tr>
+        <td>${row.rank}</td>
+        <td> ... </td>
+        <td class="name">${teamNameWithMembers}</td>
+        <td>${row.points}</td>
+        <td>${row.penalty}</td>`;
+
+    for (const result of row.problemResults) {
+        html += formatSubmission(result);
+    }
+
+    html += "</tr>";
+}
+            }
+
+            html += "</tbody></table>";
+            container.innerHTML = html;
+
+            // Динамически задаём ширину задач
+            const totalProblems = problems.length;
+            const taskWidthPercent = (10 / totalProblems).toFixed(2) + "%";
+
+            document.querySelectorAll("table thead tr th:nth-child(n+6)").forEach(th => {
+                th.style.width = taskWidthPercent;
+            });
+            document.querySelectorAll("table tbody tr td:nth-child(n+6)").forEach(td => {
+                td.style.width = taskWidthPercent;
+            });
+
+        } catch (err) {
+            console.error("Ошибка при загрузке /core/get_contest_standings:", err);
+        }
+    }
+
+    // Обработчик события для чекбокса скрытия фамилий участников
+    hideNamesCheckbox.addEventListener("change", () => {
+        areNamesHidden = hideNamesCheckbox.checked;
+        localStorage.setItem("hideNames", areNamesHidden);
+        fetchStandings(); // Перезагружаем таблицу с новыми настройками
+    });
+
+    setInterval(() => {
+        pingAlive();
+        fetchStandings();
+    }, 5000);
+
+    fetchStandings();
+</script>
+
+<script>
+    const autoScrollCheckbox = document.getElementById("auto-scroll-checkbox");
+const scrollSpeedSelect = document.getElementById("scroll-speed-select");
+
+let scrollDirection = 1;
+let scrollIntervalId = null;
+let isPaused = false;
+const pauseDuration = 5000; // задержка в мс на развороте
+
+function getScrollSpeed() {
+    switch (scrollSpeedSelect.value) {
+        case "slow": return 0.35;
+        case "fast": return 1;
+        default: return 0.75; // medium
+    }
+}
+
+let scrollAccumulator = 0;
+
+function startAutoScroll() {
+    if (scrollIntervalId !== null) return;
+
+    scrollIntervalId = setInterval(() => {
+        if (isPaused) return;
+
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        const speed = getScrollSpeed();
+        scrollAccumulator += scrollDirection * speed;
+
+        if (Math.abs(scrollAccumulator) >= 1) {
+            const delta = Math.trunc(scrollAccumulator);
+            container.scrollTop += delta;
+            scrollAccumulator -= delta; // оставляем остаток
+        }
+
+        if (container.scrollTop >= maxScroll) {
+            isPaused = true;
+            setTimeout(() => {
+                scrollDirection = -1;
+                isPaused = false;
+            }, pauseDuration);
+        }
+
+        if (container.scrollTop <= 0) {
+            isPaused = true;
+            setTimeout(() => {
+                scrollDirection = 1;
+                isPaused = false;
+            }, pauseDuration);
+        }
+    }, 10);
+}
+
+function stopAutoScroll() {
+    clearInterval(scrollIntervalId);
+    scrollIntervalId = null;
+    isPaused = false;
+}
+
+autoScrollCheckbox.addEventListener("change", () => {
+    if (autoScrollCheckbox.checked) {
+        startAutoScroll();
+    } else {
+        stopAutoScroll();
+    }
+});
+
+scrollSpeedSelect.addEventListener("change", () => {
+    if (autoScrollCheckbox.checked) {
+        stopAutoScroll();
+        startAutoScroll();
+    }
+});
+
+</script>
+
+</body>
+</html>

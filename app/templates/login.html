@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h2>Login</h2>
+    <form method="post" action="/auth/login">
+        <label for="key">Key:</label>
+        <input type="text" id="key" name="key" required><br><br>
+
+        <label for="secret">Secret:</label>
+        <input type="password" id="secret" name="secret" required><br><br>
+
+        <label for="contestId">Contest ID:</label>
+        <input type="number" id="contestId" name="contest_id" required><br><br>
+
+        <button type="submit">Login</button>
+    </form>
+</body>
+</html>

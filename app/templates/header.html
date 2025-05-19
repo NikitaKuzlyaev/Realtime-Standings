@@ -1,0 +1,13 @@
+<nav style="background-color: #f8f9fa; padding: 10px;">
+    <a href="/" style="margin-right: 20px;">Главная</a>
+    {% if request.cookies.access_token %}
+    <a href="/core/table" style="margin-right: 20px;">Логи</a>
+
+    <form action="/auth/logout" method="post" style="display:inline;">
+        <button type="submit">Выйти</button>
+    </form>
+
+    {% else %}
+    <a href="/auth/login">Войти</a>
+    {% endif %}
+</nav>
